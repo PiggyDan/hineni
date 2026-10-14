@@ -29,6 +29,16 @@ let cached: Env | undefined;
 /** Validated server environment. Throws with a clear message on misconfiguration. */
 export function env(): Env {
   if (cached) return cached;
+  // `next build` loads route modules to collect page data but never serves requests, so it must not
+  // require production secrets. These inert placeholders never reach a running server (separate process).
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return schema.parse({
+      DATABASE_URL: "postgresql://build:build@localhost:5432/build",
+      BETTER_AUTH_SECRET: "build-phase-placeholder-not-used-at-runtime",
+      PERSONAL_DATA_KEY: Buffer.alloc(32).toString("base64"),
+      ...process.env,
+    });
+  }
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n  ");
