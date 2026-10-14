@@ -1,0 +1,29 @@
+{
+  "name": "@cp/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "validate": "dotenv -e ../../.env -- prisma validate",
+    "import:bible": "dotenv -e ../../.env -- tsx scripts/import-bible.ts",
+    "prepare:kjv": "tsx scripts/prepare-kjv.ts",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "studio": "dotenv -e ../../.env -- prisma studio",
+    "typecheck": "tsc --noEmit",
+    "import:xrefs": "dotenv -e ../../.env -- tsx scripts/import-cross-references.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "dotenv-cli": "^11.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@cp/shared": "*",
+    "@prisma/client": "^6.19.3"
+  }
+}

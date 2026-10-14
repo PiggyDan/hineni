@@ -1,0 +1,52 @@
+name: RUAH validation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ruah_ci
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ruah_ci
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate disposable CI-only auth/encryption keys
+        run: node -e "const c=require('crypto'),f=require('fs');f.appendFileSync(process.env.GITHUB_ENV,'BETTER_AUTH_SECRET='+c.randomBytes(48).toString('hex')+'\nPERSONAL_DATA_KEY='+c.randomBytes(32).toString('base64')+'\n')"
+      - run: npm run db:generate
+      - run: npm run db:validate
+      - run: npm run db:deploy
+      - name: Prepare and import the public-domain integration dataset
+        run: |
+          npm run prepare:kjv -w @cp/db
+          npm run import:bible -w @cp/db -- ../../.local/bible/kjv.json --confirm-rights
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Run integration checks against development server
+        run: |
+          npm run dev > /tmp/ruah-ci-dev.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/v1/health > /dev/null; then break; fi
+            sleep 2
+          done
+          npm run test:integration

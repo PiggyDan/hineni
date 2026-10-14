@@ -1,0 +1,686 @@
+// Single PostgreSQL schema for the modular monolith.
+// Privacy: prayer entries and personal notes are stored encrypted (AES-256-GCM,
+// per-user key derived from PERSONAL_DATA_KEY), never in plaintext.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  EDITOR
+  MODERATOR
+  ADMIN
+}
+
+/// ───────────── Accounts (Better Auth core tables + profile fields) ─────────────
+model User {
+  id             String    @id
+  name           String
+  email          String    @unique
+  emailVerified  Boolean   @default(false)
+  image          String?
+  role           Role      @default(USER)
+  locale         String    @default("en")
+  theme          String    @default("system")
+  readerFontSize Int       @default(18)
+  translationId  String?
+  dailyReminder  Boolean   @default(false)
+  reminderTime   String?
+  timezone       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  bookmarks       Bookmark[]
+  highlights      Highlight[]
+  notes           Note[]
+  history         ReadingHistory[]
+  enrollments     PlanEnrollment[]
+  prayers         Prayer[]
+  journal         JournalEntry[]
+  savedItems      SavedItem[]
+  churchesSubmitted Church[]      @relation("ChurchSubmitter")
+  eventsSubmitted ChurchEvent[]   @relation("EventSubmitter")
+  contentAuthored Content[]       @relation("ContentAuthor")
+  revisions       ContentRevision[]
+  assets          MediaAsset[]
+  tracksSubmitted Track[]          @relation("TrackSubmitter")
+  sermonsSubmitted Sermon[]        @relation("SermonSubmitter")
+  reports         Report[]        @relation("Reporter")
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+/// Fixed-window rate limiting shared by auth and API routes (works across instances).
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}
+
+/// ───────────── Bible & personal library ─────────────
+model ScriptureCache {
+  key       String   @id // provider:translation:BOOK:chapter
+  data      Json
+  fetchedAt DateTime @default(now())
+
+  @@map("scripture_cache")
+}
+
+/// Translation permissions must be verified before enabling imported Scripture.
+model BibleLicense {
+  id              String @id
+  copyrightStatus String
+  license         String
+  evidenceUrl     String
+  attribution     String
+  displayAllowed  Boolean @default(false)
+  downloadAllowed Boolean @default(false)
+  audioAvailable  Boolean @default(false)
+  createdAt       DateTime @default(now())
+  translation     BibleTranslation?
+  @@map("bible_license")
+}
+
+model BibleTranslation {
+  id             String @id
+  name           String
+  abbreviation   String
+  language       String
+  publisher      String
+  sourceUrl      String
+  sourceChecksum String
+  enabled        Boolean @default(false)
+  metadata       Json @default("{}")
+  licenseId      String @unique
+  license        BibleLicense @relation(fields: [licenseId], references: [id], onDelete: Restrict)
+  importedAt     DateTime @default(now())
+  chapters       BibleChapter[]
+  @@index([enabled, language])
+  @@map("bible_translation")
+}
+
+model BibleBook {
+  id       String @id
+  order    Int @unique
+  testament String
+  chapters Int
+  nameEn   String
+  nameMn   String
+  texts    BibleChapter[]
+  @@map("bible_book")
+}
+
+model BibleChapter {
+  translationId String
+  bookId        String
+  chapter       Int
+  translation   BibleTranslation @relation(fields: [translationId], references: [id], onDelete: Restrict)
+  book          BibleBook @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  verses        BibleVerse[]
+  @@id([translationId, bookId, chapter])
+  @@map("bible_chapter")
+}
+
+model BibleVerse {
+  translationId String
+  bookId        String
+  chapter       Int
+  verse         Int
+  text          String
+  searchText    String @default("") @map("search_text")
+  normalizedSearch Unsupported("tsvector")? @map("search_vector_normalized")
+  searchVector  Unsupported("tsvector")? @map("search_vector")
+  chapterText   BibleChapter @relation(fields: [translationId, bookId, chapter], references: [translationId, bookId, chapter], onDelete: Restrict)
+  @@id([translationId, bookId, chapter, verse])
+  @@map("bible_verse")
+}
+
+model Bookmark {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passageKey    String
+  bookId        String
+  chapter       Int
+  verseStart    Int?
+  verseEnd      Int?
+  translationId String
+  label         String?
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, passageKey, translationId])
+  @@index([userId, createdAt])
+  @@map("bookmark")
+}
+
+model Highlight {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId        String
+  chapter       Int
+  verse         Int
+  color         String
+  translationId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, bookId, chapter, verse, translationId])
+  @@map("highlight")
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String
+  chapter    Int
+  translationId String?
+  verseStart Int?
+  verseEnd   Int?
+  bodyCipher String // encrypted
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, bookId, chapter])
+  @@map("note")
+}
+
+model ReadingHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId        String
+  chapter       Int
+  translationId String
+  readAt        DateTime @default(now())
+
+  @@unique([userId, bookId, chapter, translationId])
+  @@index([userId, readAt])
+  @@map("reading_history")
+}
+
+enum PlanKind {
+  CANONICAL
+  THEMATIC
+}
+
+model ReadingPlan {
+  id            String           @id @default(cuid())
+  slug          String           @unique
+  kind          PlanKind
+  titleEn       String
+  titleMn       String
+  descriptionEn String
+  descriptionMn String
+  dayCount      Int
+  days          Json // Passage[][]
+  published     Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  enrollments   PlanEnrollment[]
+
+  @@map("reading_plan")
+}
+
+model PlanEnrollment {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          ReadingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  completedDays Int[]       @default([])
+  startedAt     DateTime    @default(now())
+  completedAt   DateTime?
+
+  @@unique([userId, planId])
+  @@map("plan_enrollment")
+}
+
+/// Cross-references imported from OpenBible.info (CC BY). See scripts/import-cross-references.ts.
+model CrossReference {
+  id      Int    @id @default(autoincrement())
+  bookId  String
+  chapter Int
+  verse   Int
+  toKey   String // passage key, e.g. "ROM.5.8" or "ROM.5.8-10"
+  votes   Int
+
+  @@index([bookId, chapter, verse])
+  @@map("cross_reference")
+}
+
+/// ───────────── Editorial CMS ─────────────
+enum ContentType {
+  DEVOTIONAL
+  STUDY_GUIDE
+  ARTICLE
+  TOPIC
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Content {
+  id            String            @id @default(cuid())
+  type          ContentType
+  slug          String
+  locale        String
+  title         String
+  summary       String?
+  body          String // Markdown
+  author        String?
+  scriptureRefs String[]          @default([])
+  status        ContentStatus     @default(DRAFT)
+  featured      Boolean           @default(false)
+  publishDate   DateTime?         @db.Date // devotional date
+  publishedAt   DateTime?
+  createdById   String?
+  createdBy     User?             @relation("ContentAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  revisions     ContentRevision[]
+
+  @@unique([type, slug, locale])
+  @@index([type, status, locale, publishDate])
+  @@map("content")
+}
+
+model ContentRevision {
+  id        String   @id @default(cuid())
+  contentId String
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  editorId  String?
+  editor    User?    @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  title     String
+  body      String
+  status    ContentStatus
+  createdAt DateTime @default(now())
+
+  @@index([contentId, createdAt])
+  @@map("content_revision")
+}
+
+model MediaAsset {
+  id           String   @id @default(cuid())
+  filename     String
+  mimeType     String
+  size         Int
+  storageKey   String   @unique
+  alt          String?
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@map("media_asset")
+}
+
+/// ───────────── Worship music, sermons, podcasts ─────────────
+/// `links` is a JSON array of { provider, url } pointing to official, authorized sources.
+model Artist {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  bio       String?
+  imageUrl  String?
+  website   String?
+  country   String?
+  links     Json     @default("[]")
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  albums    Album[]
+  tracks    Track[]
+
+  @@map("artist")
+}
+
+model Album {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  artistId  String
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  year      Int?
+  coverUrl  String?
+  links     Json     @default("[]")
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tracks    Track[]
+
+  @@map("album")
+}
+
+model Track {
+  id          String          @id @default(cuid())
+  title       String
+  artistId    String
+  artist      Artist          @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  albumId     String?
+  album       Album?          @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  trackNumber Int?
+  durationSec Int?
+  links       Json            @default("[]")
+  published   Boolean         @default(false)
+  submittedById String?
+  submittedBy User?            @relation("TrackSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  playlists   PlaylistTrack[]
+
+  @@map("track")
+}
+
+model Playlist {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  title       String
+  description String?
+  coverUrl    String?
+  published   Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  tracks      PlaylistTrack[]
+
+  @@map("playlist")
+}
+
+model PlaylistTrack {
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  trackId    String
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  position   Int
+
+  @@id([playlistId, trackId])
+  @@map("playlist_track")
+}
+
+model Speaker {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  bio       String?
+  imageUrl  String?
+  church    String?
+  createdAt DateTime @default(now())
+  sermons   Sermon[]
+
+  @@map("speaker")
+}
+
+model Sermon {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  description   String?
+  speakerId     String?
+  speaker       Speaker? @relation(fields: [speakerId], references: [id], onDelete: SetNull)
+  category      String?
+  locale        String   @default("en")
+  scriptureRefs String[] @default([])
+  date          DateTime?
+  durationSec   Int?
+  links         Json     @default("[]")
+  published     Boolean  @default(false)
+  submittedById String?
+  submittedBy   User?    @relation("SermonSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([published, date])
+  @@map("sermon")
+}
+
+model Podcast {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  title       String
+  description String?
+  author      String?
+  imageUrl    String?
+  feedUrl     String?          @unique
+  website     String?
+  locale      String           @default("en")
+  published   Boolean          @default(false)
+  lastSyncedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  episodes    PodcastEpisode[]
+
+  @@map("podcast")
+}
+
+model PodcastEpisode {
+  id          String    @id @default(cuid())
+  podcastId   String
+  podcast     Podcast   @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  guid        String
+  title       String
+  description String?
+  audioUrl    String?
+  link        String?
+  durationSec Int?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([podcastId, guid])
+  @@index([podcastId, publishedAt])
+  @@map("podcast_episode")
+}
+
+enum SavedKind {
+  SERMON
+  EPISODE
+  TRACK
+  ALBUM
+  CONTENT
+}
+
+model SavedItem {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      SavedKind
+  itemId    String
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, kind, itemId])
+  @@map("saved_item")
+}
+
+/// ───────────── Churches & events ─────────────
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Church {
+  id            String           @id @default(cuid())
+  slug          String           @unique
+  name          String
+  denomination  String?
+  description   String?
+  address       String
+  city          String
+  region        String?
+  country       String // ISO 3166-1 alpha-2
+  latitude      Float?
+  longitude     Float?
+  website       String?
+  email         String?
+  phone         String?
+  languages     String[]         @default([])
+  serviceTimes  String?
+  status        ModerationStatus @default(PENDING)
+  verified      Boolean          @default(false)
+  reviewNote    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  submittedById String?
+  submittedBy   User?            @relation("ChurchSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  events        ChurchEvent[]
+
+  @@index([status, country, city])
+  @@map("church")
+}
+
+model ChurchEvent {
+  id            String           @id @default(cuid())
+  churchId      String
+  church        Church           @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  startsAt      DateTime
+  endsAt        DateTime?
+  location      String?
+  url           String?
+  status        ModerationStatus @default(PENDING)
+  submittedById String?
+  submittedBy   User?            @relation("EventSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+
+  @@index([churchId, status, startsAt])
+  @@map("church_event")
+}
+
+model Report {
+  id          String           @id @default(cuid())
+  reporterId  String?
+  reporter    User?            @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  entityType  String
+  entityId    String
+  reason      String
+  status      ModerationStatus @default(PENDING)
+  resolvedById String?
+  createdAt   DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@map("report")
+}
+
+/// ───────────── Private prayer journal (encrypted) ─────────────
+enum PrayerCategory {
+  PERSONAL
+  FAMILY
+  FRIENDS
+  CHURCH
+  HEALTH
+  WORK
+  WORLD
+  THANKSGIVING
+  OTHER
+}
+
+model Prayer {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleCipher      String
+  bodyCipher       String
+  category         PrayerCategory @default(PERSONAL)
+  answered         Boolean        @default(false)
+  answeredAt       DateTime?
+  answerNoteCipher String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@map("prayer")
+}
+
+/// Free-form private journal. Title, body and Scripture references (JSON array of passage keys) are encrypted like prayers.
+model JournalEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleCipher String
+  bodyCipher  String
+  refsCipher  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("journal_entry")
+}
+
+/// ───────────── Audit ─────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}

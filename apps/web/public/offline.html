@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HINENI — Offline</title>
+  <meta name="theme-color" content="#101827">
+  <link rel="icon" href="/branding/hineni-favicon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: light dark; --bg: #FAF8F3; --ink: #101827; --muted: #5A6170; --gold: #7D6029; --line: #E7E1D5; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #101827; --ink: #EEEAE2; --muted: #A3A9B5; --gold: #D2B680; --line: #263147; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 26rem; text-align: center; }
+    img { width: 72px; height: 72px; }
+    .light { display: none; }
+    @media (prefers-color-scheme: light) { .dark { display: none; } .light { display: inline; } }
+    h1 { font-family: "Noto Serif", Georgia, serif; font-weight: 600; font-size: 1.75rem; margin: 20px 0 8px; letter-spacing: -0.01em; }
+    p { color: var(--muted); line-height: 1.6; margin: 0 0 6px; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 24px auto; width: 48px; }
+    .he { font-family: "Noto Serif Hebrew", "Times New Roman", serif; color: var(--gold); font-size: 1.25rem; }
+    button { margin-top: 24px; min-height: 44px; padding: 0 22px; border-radius: 999px; border: 0; font: inherit; font-weight: 600;
+      background: var(--ink); color: var(--bg); cursor: pointer; }
+    button:focus-visible { outline: 2px solid #C5A46D; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="dark" src="/branding/hineni-symbol.svg" alt="">
+    <img class="light" src="/branding/hineni-symbol-light.svg" alt="">
+    <p class="he" lang="he" dir="rtl">הִנֵּנִי</p>
+    <h1>You’re offline</h1>
+    <p>HINENI needs a connection to load Scripture and your personal data. Check your connection and try again.</p>
+    <hr>
+    <h1 lang="mn" style="font-size:1.35rem">Та офлайн байна</h1>
+    <p lang="mn">Судар болон хувийн мэдээллээ ачаалахын тулд HINENI интернэт холболт шаарддаг. Холболтоо шалгаад дахин оролдоно уу.</p>
+    <button type="button" onclick="location.reload()">Try again · Дахин оролдох</button>
+  </main>
+</body>
+</html>

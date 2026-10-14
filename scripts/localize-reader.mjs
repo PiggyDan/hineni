@@ -1,0 +1,16 @@
+import fs from "node:fs";
+const translations = {
+  el: { name: "Ελληνικά", nav: ["Αρχική", "Αγία Γραφή", "Καθημερινά", "Μελέτη", "Λατρεία", "Κηρύγματα", "Εκκλησίες", "Προσευχή", "Βιβλιοθήκη", "Λογαριασμός", "Διαχείριση", "Σύνδεση", "Δημιουργία λογαριασμού", "Αποσύνδεση"], home: ["Πλησιάστε στον Λόγο.", "Διαβάστε τη Βίβλο, ακολουθήστε ένα καθημερινό πρόγραμμα, προσευχηθείτε και λατρεύστε.", "Ξεκινήστε την ανάγνωση", "Ένας ήσυχος τόπος για τη Γραφή, τη λατρεία και την κοινότητα.", "Συνδεθείτε"], bible: ["Αγία Γραφή", "Επιλέξτε βιβλίο", "Παλαιά Διαθήκη", "Καινή Διαθήκη", "Κεφάλαια", "Μετάφραση", "Επιλέξτε μετάφραση της Βίβλου", "Σύγκριση Βίβλων", "Μετάφραση σύγκρισης", "Πρόσφατη ανάγνωση", "Μέγεθος κειμένου", "Αυτό το απόσπασμα δεν είναι διαθέσιμο.", "Δεν υπάρχει διαθέσιμη εξουσιοδοτημένη μετάφραση. Επιλέξτε μια διαθέσιμη έκδοση."] },
+  de: { name: "Deutsch", nav: ["Startseite", "Bibel", "Täglich", "Studium", "Lobpreis", "Predigten", "Kirchen", "Gebet", "Bibliothek", "Konto", "Verwaltung", "Anmelden", "Konto erstellen", "Abmelden"], home: ["Dem Wort näherkommen.", "Lesen Sie die Bibel, folgen Sie einem täglichen Leseplan, beten Sie und feiern Sie Gottesdienst.", "Lesen beginnen", "Ein ruhiger Ort für die Heilige Schrift, Lobpreis und Gemeinschaft.", "Willkommen zurück"], bible: ["Bibel", "Buch auswählen", "Altes Testament", "Neues Testament", "Kapitel", "Übersetzung", "Bibelübersetzung auswählen", "Bibeln vergleichen", "Vergleichsübersetzung", "Zuletzt gelesen", "Schriftgröße", "Dieser Abschnitt ist nicht verfügbar.", "Keine autorisierte Übersetzung verfügbar. Bitte eine verfügbare Ausgabe auswählen."] },
+  ko: { name: "한국어", nav: ["홈", "성경", "매일", "성경 공부", "찬양", "설교", "교회", "기도", "보관함", "계정", "관리", "로그인", "회원가입", "로그아웃"], home: ["말씀에 가까이 나아가세요.", "성경을 읽고, 매일 읽기 계획을 따르며, 기도하고 예배하세요.", "읽기 시작", "말씀과 찬양, 공동체를 위한 평온한 공간.", "다시 오신 것을 환영합니다"], bible: ["성경", "책 선택", "구약", "신약", "장", "번역본", "성경 번역본 선택", "성경 비교", "비교 번역본", "최근 읽은 구절", "글자 크기", "이 본문은 현재 제공되지 않습니다.", "사용이 허가된 번역본이 없습니다. 제공되는 번역본을 선택하세요."] },
+  ja: { name: "日本語", nav: ["ホーム", "聖書", "毎日", "学び", "賛美", "説教", "教会", "祈り", "ライブラリー", "アカウント", "管理", "ログイン", "アカウント作成", "ログアウト"], home: ["御言葉に近づきましょう。", "聖書を読み、毎日の読書計画に沿って、祈り、礼拝しましょう。", "読み始める", "聖書と賛美、共同体のための静かな場所。", "おかえりなさい"], bible: ["聖書", "書を選ぶ", "旧約聖書", "新約聖書", "章", "翻訳", "聖書の翻訳を選ぶ", "聖書を比較", "比較する翻訳", "最近読んだ箇所", "文字サイズ", "この箇所は現在利用できません。", "利用許諾のある翻訳がありません。利用可能な翻訳を選択してください。"] },
+};
+const keys = ["title", "chooseBook", "oldTestament", "newTestament", "chapters", "translation", "chooseTranslation", "parallel", "comparisonEdition", "history", "fontSize", "unavailable", "translationUnavailable"];
+for (const [locale, value] of Object.entries(translations)) {
+  const file = `packages/shared/src/i18n/${locale}.json`;
+  const messages = JSON.parse(fs.readFileSync("packages/shared/src/i18n/en.json", "utf8"));
+  Object.keys(messages.nav).forEach((key, index) => messages.nav[key] = value.nav[index]);
+  keys.forEach((key, index) => messages.bible[key] = value.bible[index]);
+  [messages.home.heroTitle, messages.home.heroBody, messages.home.startReading, messages.footer.about, messages.auth.signInTitle] = value.home;
+  fs.writeFileSync(file, `${JSON.stringify(messages, null, 2)}\n`);
+}
