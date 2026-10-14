@@ -14,7 +14,8 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit",
-    "import:xrefs": "dotenv -e ../../.env -- tsx scripts/import-cross-references.ts"
+    "import:xrefs": "dotenv -e ../../.env -- tsx scripts/import-cross-references.ts",
+    "copy:bible": "dotenv -e ../../.env -- tsx scripts/copy-bible-content.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

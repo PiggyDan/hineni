@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "dotenv -e ../../.env -- playwright test"
+    "test:e2e": "dotenv -e ../../.env -- playwright test",
+    "vercel-build": "prisma generate --schema ../../packages/db/prisma/schema.prisma && next build"
   },
   "dependencies": {
     "@cp/db": "*",
